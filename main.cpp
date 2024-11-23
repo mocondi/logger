@@ -1,14 +1,4 @@
 
-#ifdef _WIN32
-#define BOOST_INCLUDE_PATH "C:/boost_1_86_0/boost/version.hpp"
-#else
-#define BOOST_INCLUDE_PATH "/mnt/c/boost_1_86_0/boost/version.hpp"
-#endif
-
-#include BOOST_INCLUDE_PATH
-
-#include BOOST_INCLUDE_PATH "/boost/version.hpp"
-
 
 #include <iostream>
 #include <thread>
@@ -29,19 +19,10 @@ void threadFunction(int threadId) {
     SIELOG(INFO, "Thread " + std::to_string(threadId) + " finished.");
 }
 
-int main() {
-    // Set up the logger
-    auto& logger = Logger::getInstance();
-    logger.setLogFile("logTest.log"); // Log file path; ensure it is writable
-    logger.logToConsole(true);
-
-    // Number of threads for testing
-    const int numThreads = 5;
-
+void testWithThreads(const int & numThreads)
+{
     // Vector to hold threads
     std::vector<std::thread> threads;
-
-    std::cout << "Starting threads...\n";
 
     // Create and start threads
     for (int i = 0; i < numThreads; ++i) {
@@ -54,12 +35,33 @@ int main() {
             thread.join();
         }
     }
+}
 
+void basicTest()
+{
+
+}
+
+int main() {
+    // Set up the logger
+    auto& logger = Logger::getInstance();
+    // Log file path; ensure it is writable
+    logger.setLogFile("logTest.log"); 
+    // Set to output to console
+    logger.logToConsole(true);
+
+    // Basic test
+    std::cout << "Starting basic test...\n";
+    basicTest();
+
+    // Thread test
+    std::cout << "Starting thread test...\n";
+    testWithThreads(5);
 
     logger.setVerbosity(false);
     SIELOG(INFO, "This log will not include file or function info");
 
-    std::cout << "All threads finished. Check the log file: test_log.txt\n";
+    std::cout << "Finished. Check the log file: logTest.log\n";
 
     return 0;
 }

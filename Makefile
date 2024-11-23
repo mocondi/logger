@@ -1,40 +1,36 @@
 # Compiler and flags
 CXX = g++
-CXXFLAGS = -Wall -Wextra -std=c++17
-BOOST_INCLUDE = -I"C:/boost_1_86_0"      # Boost include path
-BOOST_LIB = -L"C:/boost_1_86_0/stage/lib" # Boost library path
+CXXFLAGS = -std=c++17 -Wall -Wextra
 
-# Platform-specific settings
-ifeq ($(OS),Windows_NT)
-    RM = del /Q
-    TARGET = test.exe
+# Paths and options
+SRC = main.cpp
+TARGET = main
+INCLUDES = -I. # Add the current directory for includes
+
+# Optional Boost support
+USE_BOOST ?= 1 # Set to 1 to enable Boost; 0 to disable
+BOOST_CXXFLAGS =
+BOOST_LDFLAGS =
+
+ifeq ($(USE_BOOST), 1)
+    BOOST_CXXFLAGS = -DUSE_BOOST -I/usr/include # Update this path for your Boost installation
+    BOOST_LDFLAGS = -L/usr/lib -lboost_system -lboost_date_time # Update these libraries as needed
+    $(info Compiling with Boost support)
 else
-    RM = rm -f
-    TARGET = test
-    BOOST_INCLUDE = -I/mnt/c/boost_1_86_0
-    BOOST_LIB = -L/mnt/c/boost_1_86_0/stage/lib
+    $(info Compiling without Boost support)
 endif
 
-# Source and header files
-SRCS = main.cpp
-HEADERS = logger.hpp
-
-# Object files
-OBJS = $(SRCS:.cpp=.o)
-
-# Default target
-all: $(TARGET)
+# Final build flags
+ALL_CXXFLAGS = $(CXXFLAGS) $(BOOST_CXXFLAGS) $(INCLUDES)
+ALL_LDFLAGS = $(BOOST_LDFLAGS)
 
 # Build target
-$(TARGET): $(OBJS)
-	$(CXX) $(CXXFLAGS) $(BOOST_INCLUDE) -o $(TARGET) $(OBJS) $(BOOST_LIB)
-
-# Compile source files into object files
-%.o: %.cpp $(HEADERS)
-	$(CXX) $(CXXFLAGS) $(BOOST_INCLUDE) -c $< -o $@
-
-# Clean build files
-clean:
-	$(RM) $(OBJS) $(TARGET)
-
 .PHONY: all clean
+
+all: $(TARGET)
+
+$(TARGET): $(SRC)
+	$(CXX) $(ALL_CXXFLAGS) -o $@ $^ $(ALL_LDFLAGS)
+
+clean:
+	rm -f $(TARGET)

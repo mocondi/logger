@@ -17,20 +17,13 @@
 
 #pragma once
 
-#if defined(__GNUC__)
-    #include <boost/format.hpp>
-    #include <boost/date_time.hpp>
-    #pragma message "GCC compiler detected"
-#elif defined(__clang__)
-    #include <format>
-    #pragma message "Clang compiler detected"
-#elif defined(_MSC_VER)
-    #include <boost/format.hpp>
-    #include <boost/date_time.hpp>
-    #pragma message "MSVC compiler detected"
-#elif defined(__INTEL_COMPILER)
-    #include <format>
-    #pragma message "Intel C++ Compiler detected"
+#ifdef USE_BOOST
+#include <boost/format.hpp>
+#include <boost/date_time.hpp>
+#pragma message("Compiling with Boost support")
+#else
+#include <format>
+#pragma message("Compiling without Boost support")
 #endif
 
 #include <fstream>
