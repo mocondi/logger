@@ -34,12 +34,15 @@
 
 #ifdef _WIN32
 #include <io.h>     // For _write() and _close() on Windows
+#include <sys/stat.h> // For S_IWUSR, S_IRUSR
 #define O_WRONLY _O_WRONLY
 #define O_CREAT  _O_CREAT
 #define O_APPEND _O_APPEND
-#define write _write
-#define close _close
+#define PERMISSIONS _S_IREAD | _S_IWRITE
+//#define write _write
+//#define close _close
 #else
+#define PERMISSIONS S_IRUSR | S_IWUSR
 #include <unistd.h> // For write() and close() on POSIX
 #endif
 
@@ -97,9 +100,17 @@ public:
  * This function ensures the file is ready for signal-safe logging.
  */
 void setupCrashLog() {
-    crashLogFd = open("crash.log", O_WRONLY | O_CREAT | O_APPEND, 0644);
+#ifdef _WIN32
+    // Use _open for Windows with correct permissions
+    crashLogFd = _open("crash.log", _O_WRONLY | _O_CREAT | _O_APPEND, PERMISSIONS);
+#else
+    // Use open for POSIX
+    crashLogFd = open("crash.log", O_WRONLY | O_CREAT | O_APPEND, PERMISSIONS);
+#endif
     if (crashLogFd == -1) {
         SignalSafeLogger::log("Failed to open crash log file.");
+    } else {
+        SignalSafeLogger::log("Crash log file opened successfully.");
     }
 }
 
@@ -111,7 +122,12 @@ void setupCrashLog() {
  */
 void cleanupCrashLog() {
     if (crashLogFd != -1) {
+#ifdef _WIN32
+        _close(crashLogFd);
+#else
         close(crashLogFd);
+#endif
+        SignalSafeLogger::log("Crash log file closed successfully.");
     }
 }
 
