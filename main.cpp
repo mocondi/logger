@@ -28,6 +28,10 @@
 #include <iostream>
 #include <thread>
 #include <vector>
+#include <csignal>
+#include <unistd.h> // For write
+#include <cstring>  // For strerror
+
 #include "logger.hpp" // Include the logger header
 
 /**
@@ -48,6 +52,104 @@ void threadFunction(int threadId) {
 }
 
 /**
+ * @class SignalSafeLogger
+ * @brief Provides minimal, signal-safe logging functionality.
+ *
+ * @details
+ * This logger is specifically designed for use in signal handlers. It avoids
+ * unsafe operations such as dynamic memory allocation, locking, and standard
+ * library I/O functions. Logs are written directly to `stderr` using `write`.
+ */
+class SignalSafeLogger {
+public:
+    /**
+     * @brief Logs a message to `stderr`.
+     * @param message The message to log.
+     *
+     * @details
+     * This function is signal-safe and writes the message directly to `stderr`
+     * without dynamic memory allocation or other non-signal-safe operations.
+     */
+    static void log(const char* message) {
+        write(STDERR_FILENO, message, strlen(message)); // Safe logging to stderr
+        write(STDERR_FILENO, "\n", 1); // Add a newline
+    }
+
+    /**
+     * @brief Logs an error message with an associated error code.
+     * @param message The error message to log.
+     * @param errorCode The associated error code (e.g., `errno`).
+     *
+     * @details
+     * This function is signal-safe and logs the error message along with
+     * the human-readable description of the error code.
+     */
+    static void logError(const char* message, int errorCode) {
+        write(STDERR_FILENO, message, strlen(message));
+        write(STDERR_FILENO, ": ", 2);
+        const char* errorStr = strerror(errorCode); // Safe conversion of error code
+        write(STDERR_FILENO, errorStr, strlen(errorStr));
+        write(STDERR_FILENO, "\n", 1); // Add a newline
+    }
+};
+
+/**
+ * @brief Signal handler to log the received signal and terminate the application.
+ * @param signal The signal number (e.g., SIGSEGV, SIGABRT).
+ *
+ * @details
+ * This function logs the type of signal received using `SignalSafeLogger`
+ * and terminates the application safely using `_exit`.
+ */
+void signalHandler(int signal) {
+    // Log the signal using the signal-safe logger
+    SignalSafeLogger::log("Application crashed with signal:");
+    switch (signal) {
+        case SIGSEGV:
+            SignalSafeLogger::log("SIGSEGV (Segmentation Fault)");
+            break;
+        case SIGABRT:
+            SignalSafeLogger::log("SIGABRT (Abort)");
+            break;
+        case SIGFPE:
+            SignalSafeLogger::log("SIGFPE (Floating Point Exception)");
+            break;
+        case SIGILL:
+            SignalSafeLogger::log("SIGILL (Illegal Instruction)");
+            break;
+        case SIGINT:
+            SignalSafeLogger::log("SIGINT (Interrupt)");
+            break;
+        case SIGTERM:
+            SignalSafeLogger::log("SIGTERM (Termination)");
+            break;
+        default:
+            SignalSafeLogger::log("Unknown signal");
+            break;
+    }
+
+    // Exit the application safely
+    _exit(EXIT_FAILURE); // Exit without cleanup to avoid further issues
+}
+
+/**
+ * @brief Registers signal handlers for common crash-related signals.
+ *
+ * @details
+ * This function sets up signal handlers for signals such as `SIGSEGV` (segmentation fault),
+ * `SIGABRT` (abort), `SIGFPE` (floating-point exception), `SIGILL` (illegal instruction),
+ * `SIGINT` (interrupt), and `SIGTERM` (termination).
+ */
+void setupSignalHandlers() {
+    signal(SIGSEGV, signalHandler);
+    signal(SIGABRT, signalHandler);
+    signal(SIGFPE, signalHandler);
+    signal(SIGILL, signalHandler);
+    signal(SIGINT, signalHandler);
+    signal(SIGTERM, signalHandler);
+}
+
+/**
  * @brief Main function demonstrating the logger functionality with multithreading.
  * @return Exit code (0 for success).
  */
@@ -56,6 +158,9 @@ int main() {
     auto& logger = Logger::getInstance();
     logger.setLogFile("logTest.log"); // Log file path
     logger.logToConsole(true);
+
+    // Setup signal handlers
+    setupSignalHandlers();
 
     // Number of threads for testing
     const int numThreads = 5;
@@ -81,6 +186,12 @@ int main() {
     SIELOG(INFO, "This log will not include file or function info.");
 
     std::cout << "All threads finished. Check the log file: logTest.log" << std::endl;
+
+    // Simulate a crash for testing
+    int* ptr = nullptr;
+    *ptr = 42; // This will trigger SIGSEGV
+
+    logger.log(Logger::LogLevel::INFO, "This message will not be logged.");
 
     return 0;
 }

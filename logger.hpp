@@ -221,6 +221,7 @@ private:
 // Macro to simplify logging calls
 #define SIELOG(level, message)     Logger::getInstance().log(Logger::LogLevel::level, message, __FILE__, __func__)
 
+
 /**
  * @example
  * auto& logger = Logger::getInstance();
