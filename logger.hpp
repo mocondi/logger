@@ -105,7 +105,7 @@ public:
     void log(LogLevel level, const std::string& message, 
             const char* file = nullptr, const char* function = nullptr) {
         std::lock_guard<std::mutex> lock(mutex_);
-printf("log: %d level, %s\n", (int)level, message.c_str());
+
         // Check if the log level is below the minimum log level
         if (level < minLogLevel_) {
             return;

@@ -25,6 +25,9 @@ else()
     message(STATUS "Building without Boost support.")
 endif()
 
+add_compile_definitions(_CRT_NONSTDC_NO_DEPRECATE)
+add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
+
 # Add executable
 add_executable(loggerTest main.cpp)
 
