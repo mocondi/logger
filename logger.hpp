@@ -1,19 +1,3 @@
-/// @classification UNCLASSIFIED
-/// @classification LOCKHEED MARTIN PROPRIETARY INFORMATION
-///
-/// @file
-/// @copyright Lockheed Martin Corporation
-/// @date 11/22/2024
-///
-/// @license
-/// This computer software is PROPRIETARY INFORMATION of Lockheed Martin
-/// Corporation and shall not be reproduced, disclosed, or used without
-/// written permission of Lockheed Martin Corporation. All rights reserved.
-///
-/// @program TSS
-///
-/// @brief Logger is a generic logger class with enhanced features.
-////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #pragma once
 
@@ -33,6 +17,10 @@
 #include <iostream>
 #include <stdexcept>
 
+/**
+ * @class Logger
+ * @brief Singleton logger class providing thread-safe logging with various log levels.
+ */
 class Logger {
 public:
     enum class LogLevel { INFO, WARNING, ERROR, DEBUG };
@@ -65,8 +53,8 @@ public:
     }
 
     /**
-     * @brief Set the logs to output calling file and function.
-     * @param verbose flag to enable.
+     * @brief Enable detailed logging with file and function information.
+     * @param verbose Flag to enable verbosity.
      */
     void setVerbosity(bool verbose) {
         std::lock_guard<std::mutex> lock(mutex_);
@@ -74,7 +62,7 @@ public:
     }
 
     /**
-     * @brief Enable or disable logging to the console.
+     * @brief Enable or disable console output for logs.
      * @param enable True to enable console logging; false to disable.
      */
     void logToConsole(bool enable) {
@@ -86,6 +74,8 @@ public:
      * @brief Log a message with a specified log level.
      * @param level The log level of the message.
      * @param message The message to log.
+     * @param file The file name (optional, used if verbosity is enabled).
+     * @param function The function name (optional, used if verbosity is enabled).
      */
     void log(LogLevel level, const std::string& message, 
             const char* file = nullptr, const char* function = nullptr) {
@@ -174,31 +164,6 @@ private:
     Logger& operator=(const Logger&) = delete;
 
     /**
-     * @brief Get the current timestamp as a string.
-     * @return Formatted timestamp string.
-     */
-    std::string getTimestamp() {
-        using namespace boost::posix_time;
-        ptime now = second_clock::local_time();
-        return to_simple_string(now);
-    }
-
-    /**
-     * @brief Convert log level to a string.
-     * @param level Log level to convert.
-     * @return Corresponding string representation of the log level.
-     */
-    std::string toString(LogLevel level) {
-        switch (level) {
-            case LogLevel::INFO:    return "INFO";
-            case LogLevel::WARNING: return "WARNING";
-            case LogLevel::ERROR:   return "ERROR";
-            case LogLevel::DEBUG:   return "DEBUG";
-            default:                return "UNKNOWN";
-        }
-    }
-
-    /**
      * @brief Rotate logs if the log file exceeds the maximum size.
      * @param maxSize Maximum allowed log file size in bytes.
      */
@@ -220,38 +185,21 @@ private:
         }
     }
 
-    std::string logFile_;       ///< Path to the log file
+    std::string logFile_; ///< Path to the log file
     LogLevel minLogLevel_ = LogLevel::INFO; ///< Minimum log level
     bool logToConsole_ = false; ///< Flag for console logging
     size_t maxLogSize_ = 5 * 1024 * 1024; ///< Maximum log size (default: 5 MB)
-    std::mutex mutex_;          ///< Mutex for thread safety
-    bool verbose_; // Flag to control verbosity
+    std::mutex mutex_; ///< Mutex for thread safety
+    bool verbose_; ///< Flag to control verbosity
 };
 
 // Macro to simplify logging calls
-#define SIELOG(level, message) \
-    Logger::getInstance().log(Logger::LogLevel::level, message, __FILE__, __func__)
+#define SIELOG(level, message)     Logger::getInstance().log(Logger::LogLevel::level, message, __FILE__, __func__)
 
-// Example Use:
-/*
-int main() {
-    auto& logger = Logger::getInstance();
-    logger.setLogFile("test_log.txt");
-
-    // Enable verbosity
-    logger.setVerbosity(true);
-
-    SIELOG(INFO, "Main function started.");
-    testFunction();
-    SIELOG(ERROR, "An error occurred in main.");
-
-    // Disable verbosity
-    logger.setVerbosity(false);
-
-    SIELOG(INFO, "This log will not include file or function info.");
-    return 0;
-}
-*/
-
-////////////////////////////////////////////////////////////////////////////////////////////////////
-/// UNCLASSIFIED
+/**
+ * @example
+ * auto& logger = Logger::getInstance();
+ * logger.setLogFile("log.txt");
+ * logger.setLogLevel(Logger::LogLevel::DEBUG);
+ * SIELOG(INFO, "This is an informational message.");
+ */

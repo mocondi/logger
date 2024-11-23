@@ -1,11 +1,12 @@
-
-
 #include <iostream>
 #include <thread>
 #include <vector>
-#include "Logger.hpp" // Include the logger header
+#include "logger.hpp" // Include the logger header
 
-// Function to log messages from multiple threads
+/**
+ * @brief Function to log messages from multiple threads.
+ * @param threadId ID of the thread logging the messages.
+ */
 void threadFunction(int threadId) {
     auto& logger = Logger::getInstance();
 
@@ -19,10 +20,23 @@ void threadFunction(int threadId) {
     SIELOG(INFO, "Thread " + std::to_string(threadId) + " finished.");
 }
 
-void testWithThreads(const int & numThreads)
-{
+/**
+ * @brief Main function demonstrating the logger functionality with multithreading.
+ * @return Exit code (0 for success).
+ */
+int main() {
+    // Set up the logger
+    auto& logger = Logger::getInstance();
+    logger.setLogFile("logTest.log"); // Log file path
+    logger.logToConsole(true);
+
+    // Number of threads for testing
+    const int numThreads = 5;
+
     // Vector to hold threads
     std::vector<std::thread> threads;
+
+    std::cout << "Starting threads..." << std::endl;
 
     // Create and start threads
     for (int i = 0; i < numThreads; ++i) {
@@ -35,36 +49,11 @@ void testWithThreads(const int & numThreads)
             thread.join();
         }
     }
-}
-
-void basicTest()
-{
-
-}
-
-int main() {
-    // Set up the logger
-    auto& logger = Logger::getInstance();
-    // Log file path; ensure it is writable
-    logger.setLogFile("logTest.log"); 
-    // Set to output to console
-    logger.logToConsole(true);
-
-    // Basic test
-    std::cout << "Starting basic test...\n";
-    basicTest();
-
-    // Thread test
-    std::cout << "Starting thread test...\n";
-    testWithThreads(5);
 
     logger.setVerbosity(false);
-    SIELOG(INFO, "This log will not include file or function info");
+    SIELOG(INFO, "This log will not include file or function info.");
 
-    std::cout << "Finished. Check the log file: logTest.log\n";
+    std::cout << "All threads finished. Check the log file: logTest.log" << std::endl;
 
     return 0;
 }
-
-
-

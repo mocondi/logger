@@ -13,8 +13,10 @@ BOOST_CXXFLAGS =
 BOOST_LDFLAGS =
 
 ifeq ($(USE_BOOST), 1)
-    BOOST_CXXFLAGS = -DUSE_BOOST -I/usr/include # Update this path for your Boost installation
-    BOOST_LDFLAGS = -L/usr/lib -lboost_system -lboost_date_time # Update these libraries as needed
+    BOOST_INCLUDE_PATH = C:/boost_1_81_0 # Update this path to your Boost include directory
+    BOOST_LIB_PATH = C:/boost_1_81_0/stage/lib # Update this path if you built Boost libraries
+    BOOST_CXXFLAGS = -DUSE_BOOST -I$(BOOST_INCLUDE_PATH)
+    BOOST_LDFLAGS = -L$(BOOST_LIB_PATH) -lboost_system -lboost_date_time # Update libraries as needed
     $(info Compiling with Boost support)
 else
     $(info Compiling without Boost support)
@@ -33,4 +35,5 @@ $(TARGET): $(SRC)
 	$(CXX) $(ALL_CXXFLAGS) -o $@ $^ $(ALL_LDFLAGS)
 
 clean:
-	rm -f $(TARGET)
+	@if exist $(TARGET).exe del /f $(TARGET).exe
+	@if exist $(TARGET) del /f $(TARGET)
