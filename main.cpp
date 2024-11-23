@@ -101,7 +101,8 @@ public:
  * This function logs the type of signal received using `SignalSafeLogger`
  * and terminates the application safely using `_exit`.
  */
-void signalHandler(int signal) {
+void signalHandler([[maybe_unused]] int signal) {
+    printf("signal called: %d\n", signal);
     // Log the signal using the signal-safe logger
     SignalSafeLogger::log("Application crashed with signal:");
     switch (signal) {
@@ -161,7 +162,7 @@ int main() {
 
     // Setup signal handlers
     setupSignalHandlers();
-
+/*
     // Number of threads for testing
     const int numThreads = 5;
 
@@ -181,7 +182,7 @@ int main() {
             thread.join();
         }
     }
-
+*/
     logger.setVerbosity(false);
     SIELOG(INFO, "This log will not include file or function info.");
 

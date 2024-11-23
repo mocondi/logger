@@ -101,11 +101,11 @@ public:
      * @param message The message to log.
      * @param file The file name (optional, used if verbosity is enabled).
      * @param function The function name (optional, used if verbosity is enabled).
-     */
+     */    
     void log(LogLevel level, const std::string& message, 
             const char* file = nullptr, const char* function = nullptr) {
         std::lock_guard<std::mutex> lock(mutex_);
-
+printf("log: %d level, %s\n", (int)level, message.c_str());
         // Check if the log level is below the minimum log level
         if (level < minLogLevel_) {
             return;
