@@ -26,12 +26,12 @@ else()
 endif()
 
 # Add executable
-add_executable(main main.cpp)
+add_executable(loggerTest main.cpp)
 
 # Include directories for the project
-target_include_directories(main PRIVATE ${CMAKE_SOURCE_DIR})
+target_include_directories(loggerTest PRIVATE ${CMAKE_SOURCE_DIR})
 
 # Link Boost libraries if enabled
 if(USE_BOOST)
-    target_link_libraries(main Boost::boost) # Update this if specific Boost libraries are needed
+    target_link_libraries(loggerTest Boost::boost) # Update this if specific Boost libraries are needed
 endif()

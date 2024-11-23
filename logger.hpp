@@ -30,7 +30,8 @@
 #include <boost/date_time.hpp>
 #pragma message("Compiling with Boost support")
 #else
-#include <format>
+//#include <format> // Uses C++20>
+#include <sstream> // Required for std::ostringstream
 #pragma message("Compiling without Boost support")
 #endif
 

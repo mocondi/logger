@@ -4,7 +4,7 @@ CXXFLAGS = -std=c++17 -Wall -Wextra
 
 # Paths and options
 SRC = main.cpp
-TARGET = main
+TARGET = loggerTest
 INCLUDES = -I. # Add the current directory for includes
 
 # Optional Boost support
@@ -34,6 +34,11 @@ all: $(TARGET)
 $(TARGET): $(SRC)
 	$(CXX) $(ALL_CXXFLAGS) -o $@ $^ $(ALL_LDFLAGS)
 
+# Clean target
 clean:
+ifeq ($(OS), Windows)
 	@if exist $(TARGET).exe del /f $(TARGET).exe
 	@if exist $(TARGET) del /f $(TARGET)
+else
+	rm -f $(TARGET)
+endif
