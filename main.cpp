@@ -1,9 +1,9 @@
 /*
  * @file main.cpp
- * @brief Entry point demonstrating the Logger functionality with multithreading.
+ * @brief Entry point demonstrating the Logger functionality with multithreading and crash handling.
  *
+ * @version Updated: 2-Dec-2024
  * @author Mark Ocondi
- * @date 20-Novwember-2024
  *
  * @license
  * This file is part of the Logger Project.
@@ -20,69 +20,39 @@
  *
  * You should have received a copy of the GNU General Public License
  * along with the Logger Project. If not, see <https://www.gnu.org/licenses/>.
- *
  */
-
-
 
 #include <iostream>
 #include <thread>
 #include <vector>
 #include <csignal>
-#include <fcntl.h>  // For _open(), _O_* flags
-#include <cstring>  // For strlen()
+#include <fcntl.h> // For _open(), _O_* flags
+#include <cstring> // For strlen()
 
 #ifdef _WIN32
-#include <io.h>     // For _write() and _close() on Windows
-#include <sys/stat.h> // For S_IWUSR, S_IRUSR
+#include <io.h> // For _write() and _close() on Windows
+#include <sys/stat.h>
 #define O_WRONLY _O_WRONLY
 #define O_CREAT  _O_CREAT
 #define O_APPEND _O_APPEND
 #define PERMISSIONS _S_IREAD | _S_IWRITE
-//#define write _write
-//#define close _close
 #else
+#include <unistd.h>
 #define PERMISSIONS S_IRUSR | S_IWUSR
-#include <unistd.h> // For write() and close() on POSIX
 #endif
 
-#include "logger.hpp" // Include the logger header
+#include "logger.hpp" // Include the updated Logger header
 
 int crashLogFd = -1;
 
-/**
- * @class SignalSafeLogger
- * @brief Provides minimal, signal-safe logging functionality.
- *
- * @details
- * This logger is specifically designed for use in signal handlers. It avoids
- * unsafe operations such as dynamic memory allocation, locking, and standard
- * library I/O functions. Logs are written directly to `stderr` using `write`.
- */
+// Signal-safe logger class
 class SignalSafeLogger {
 public:
-    /**
-     * @brief Logs a message to `stderr`.
-     * @param message The message to log.
-     *
-     * @details
-     * This function is signal-safe and writes the message directly to `stderr`
-     * without dynamic memory allocation or other non-signal-safe operations.
-     */
     static void log(const char* message) {
-        // Explicit cast to unsigned int for Windows compatibility
         write(fileno(stderr), message, static_cast<unsigned int>(strlen(message)));
         write(fileno(stderr), "\n", 1);
     }
-    /**
-     * @brief Logs an error message with an associated error code.
-     * @param message The error message to log.
-     * @param errorCode The associated error code (e.g., `errno`).
-     *
-     * @details
-     * This function is signal-safe and logs the error message along with
-     * the human-readable description of the error code.
-     */
+
     static void logToFile(int fd, const char* message) {
         if (fd != -1) {
             write(fd, message, static_cast<unsigned int>(strlen(message)));
@@ -91,20 +61,10 @@ public:
     }
 };
 
-
-/**
- * @brief Sets up the crash log file by opening it and storing the file descriptor.
- * 
- * @details
- * Opens the file in append mode. If the file does not exist, it is created.
- * This function ensures the file is ready for signal-safe logging.
- */
 void setupCrashLog() {
 #ifdef _WIN32
-    // Use _open for Windows with correct permissions
     crashLogFd = _open("crash.log", _O_WRONLY | _O_CREAT | _O_APPEND, PERMISSIONS);
 #else
-    // Use open for POSIX
     crashLogFd = open("crash.log", O_WRONLY | O_CREAT | O_APPEND, PERMISSIONS);
 #endif
     if (crashLogFd == -1) {
@@ -114,12 +74,6 @@ void setupCrashLog() {
     }
 }
 
-/**
- * @brief Cleans up the crash log file by closing the file descriptor.
- * 
- * @details
- * Should be called during normal application exit to release resources.
- */
 void cleanupCrashLog() {
     if (crashLogFd != -1) {
 #ifdef _WIN32
@@ -131,14 +85,6 @@ void cleanupCrashLog() {
     }
 }
 
-/**
- * @brief Signal handler to log the received signal and terminate the application.
- * @param signal The signal number (e.g., SIGSEGV, SIGABRT).
- *
- * @details
- * This function logs the type of signal received using `SignalSafeLogger`
- * and terminates the application safely using `_exit`.
- */
 void signalHandler(int signal) {
     SignalSafeLogger::logToFile(crashLogFd, "Application crashed with signal:");
     switch (signal) {
@@ -148,60 +94,20 @@ void signalHandler(int signal) {
         case SIGABRT:
             SignalSafeLogger::logToFile(crashLogFd, "SIGABRT (Abort)");
             break;
-        case SIGFPE:
-            SignalSafeLogger::logToFile(crashLogFd, "SIGFPE (Floating Point Exception)");
-            break;
-        case SIGILL:
-            SignalSafeLogger::logToFile(crashLogFd, "SIGILL (Illegal Instruction)");
-            break;
-        case SIGINT:
-            SignalSafeLogger::logToFile(crashLogFd, "SIGINT (Interrupt)");
-            break;
-        case SIGTERM:
-            SignalSafeLogger::logToFile(crashLogFd, "SIGTERM (Termination)");
-            break;
         default:
             SignalSafeLogger::logToFile(crashLogFd, "Unknown signal received");
             break;
     }
-
     _exit(EXIT_FAILURE);
 }
 
-/**
- * @brief Registers signal handlers for common crash-related signals.
- *
- * @details
- * This function sets up signal handlers for signals such as `SIGSEGV` (segmentation fault),
- * `SIGABRT` (abort), `SIGFPE` (floating-point exception), `SIGILL` (illegal instruction),
- * `SIGINT` (interrupt), and `SIGTERM` (termination).
- */
 void setupSignalHandlers() {
     signal(SIGSEGV, signalHandler);
     signal(SIGABRT, signalHandler);
-    signal(SIGFPE, signalHandler);
-    signal(SIGILL, signalHandler);
-    signal(SIGINT, signalHandler);
-    signal(SIGTERM, signalHandler);
 }
 
-// Simple crashing function
-int crashApp() {
-    // Simulate a segmentation fault
-    int* ptr = nullptr;
-    *ptr = 42;
-    return 0;
-}
-
-/**
- * @brief Function to log messages from multiple threads.
- * @param threadId ID of the thread logging the messages.
- */
 void threadFunction(int threadId) {
     auto& logger = Logger::getInstance();
-
-    // Enable verbosity for this thread
-    logger.setVerbosity(true);
 
     SIELOG(INFO, "Thread " + std::to_string(threadId) + " started.");
     SIELOG(DEBUG, "Thread " + std::to_string(threadId) + " is running.");
@@ -210,52 +116,37 @@ void threadFunction(int threadId) {
     SIELOG(INFO, "Thread " + std::to_string(threadId) + " finished.");
 }
 
-
-/**
- * @brief Main function demonstrating the logger functionality with multithreading.
- * @return Exit code (0 for success).
- */
 int main() {
-    // Set up the logger
     auto& logger = Logger::getInstance();
-    logger.setLogFile("logTest.log"); // Log file path
-    logger.logToConsole(true);
+    logger.setLogFile("logTest.log");
+    logger.setLogLevel(Logger::LogLevel::DEBUG);
+    logger.setLogToConsole(true);
 
     setupCrashLog();
     atexit(cleanupCrashLog);
-
-    // Setup signal handlers
     setupSignalHandlers();
 
-    // Number of threads for testing
     const int numThreads = 5;
-
-    // Vector to hold threads
     std::vector<std::thread> threads;
 
     std::cout << "Starting threads..." << std::endl;
 
-    // Create and start threads
     for (int i = 0; i < numThreads; ++i) {
         threads.emplace_back(threadFunction, i + 1);
     }
 
-    // Wait for all threads to finish
     for (auto& thread : threads) {
         if (thread.joinable()) {
             thread.join();
         }
     }
 
-    logger.setVerbosity(false);
-    SIELOG(INFO, "This log will not include file or function info.");
-
-    std::cout << "All threads finished. Check the log file: logTest.log" << std::endl;
+    SIELOG(INFO, "All threads finished. Check the log file: logTest.log");
 
     // Simulate a crash for testing
-    crashApp();
-
-    logger.log(Logger::LogLevel::INFO, "This message will not be logged.");
+    // Uncomment to test signal handling
+    // int* ptr = nullptr;
+    // *ptr = 42;
 
     return 0;
 }

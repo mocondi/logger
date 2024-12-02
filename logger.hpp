@@ -23,200 +23,194 @@
  *
  */
 
-#pragma once
-
-#ifdef USE_BOOST
-#include <boost/format.hpp>
-#include <boost/date_time.hpp>
-#pragma message("Compiling with Boost support")
-#else
-//#include <format> // Uses C++20>
-#include <sstream> // Required for std::ostringstream
-#pragma message("Compiling without Boost support")
-#endif
-
+#include <iostream>
 #include <fstream>
-#include <filesystem> // C++17 for filesystem utilities
+#include <sstream>
 #include <string>
 #include <mutex>
-#include <iostream>
-#include <stdexcept>
+#include <queue>
+#include <thread>
+#include <condition_variable>
+#include <chrono>
+#include <ctime>
+#include <iomanip>
+#include <map>
 
-/**
- * @class Logger
- * @brief Singleton logger class providing thread-safe logging with various log levels.
- */
+#define SIELOG(level, message) Logger::getInstance().log(Logger::LogLevel::level, message, __FILE__, __func__)
+
 class Logger {
 public:
-    enum class LogLevel { INFO, WARNING, ERROR, DEBUG };
+    enum class LogLevel {
+        TRACE, DEBUG, INFO, WARNING, ERROR, CRITICAL
+    };
 
-    /**
-     * @brief Get the Singleton instance of the Logger.
-     * @return Reference to the Logger instance.
-     */
     static Logger& getInstance() {
         static Logger instance;
         return instance;
     }
 
-    /**
-     * @brief Set the log file path.
-     * @param logFile Path to the log file.
-     */
-    void setLogFile(const std::string& logFile) {
-        std::lock_guard<std::mutex> lock(mutex_);
-        logFile_ = logFile;
+    void setLogFile(const std::string& filename) {
+        logFile_ = filename;
     }
 
-    /**
-     * @brief Set the minimum log level to filter logs.
-     * @param level Minimum log level to log.
-     */
     void setLogLevel(LogLevel level) {
-        std::lock_guard<std::mutex> lock(mutex_);
         minLogLevel_ = level;
     }
 
-    /**
-     * @brief Enable detailed logging with file and function information.
-     * @param verbose Flag to enable verbosity.
-     */
-    void setVerbosity(bool verbose) {
-        std::lock_guard<std::mutex> lock(mutex_);
-        verbose_ = verbose;
+    void setMaxLogSize(size_t bytes) {
+        maxLogSize_ = bytes;
     }
 
-    /**
-     * @brief Enable or disable console output for logs.
-     * @param enable True to enable console logging; false to disable.
-     */
-    void logToConsole(bool enable) {
-        std::lock_guard<std::mutex> lock(mutex_);
+    void setMaxBackups(int count) {
+        maxBackups_ = count;
+    }
+
+    void setLogToConsole(bool enable) {
         logToConsole_ = enable;
     }
 
-    /**
-     * @brief Log a message with a specified log level.
-     * @param level The log level of the message.
-     * @param message The message to log.
-     * @param file The file name (optional, used if verbosity is enabled).
-     * @param function The function name (optional, used if verbosity is enabled).
-     */    
-    void log(LogLevel level, const std::string& message, 
-            const char* file = nullptr, const char* function = nullptr) {
-        std::lock_guard<std::mutex> lock(mutex_);
-
-        // Check if the log level is below the minimum log level
-        if (level < minLogLevel_) {
-            return;
-        }
-
-        // Rotate logs if necessary
-        rotateLogs(maxLogSize_);
-
-        // Prepare the log message
-        std::ostringstream logMessage;
-
-        // Get the current time
-        time_t rawtime;
-        time(&rawtime);
-
-        struct tm timeInfo;
-        char timeStr[20];
-    #if defined(_WIN32) || defined(_WIN64)
-        localtime_s(&timeInfo, &rawtime);
-    #else
-        localtime_r(&rawtime, &timeInfo);
-    #endif
-        strftime(timeStr, sizeof(timeStr), "%Y-%m-%d %H:%M:%S", &timeInfo);
-
-        logMessage << timeStr;
-
-        // Add log level
-        switch (level) {
-            case LogLevel::INFO:
-                logMessage << " [INFO] ";
-                break;
-            case LogLevel::WARNING:
-                logMessage << " [WARNING] ";
-                break;
-            case LogLevel::ERROR:
-                logMessage << " [ERROR] ";
-                break;
-            case LogLevel::DEBUG:
-                logMessage << " [DEBUG] ";
-                break;
-        }
-
-        // Add file and function if verbosity is enabled
-        if (verbose_ && file) {
-            logMessage << "[" << file;
-            if (function) {
-                logMessage << "::" << function;
-            }
-            logMessage << "] ";
-        }
-
-        // Add the message
-        logMessage << message;
-
-        // Log to file
-        std::ofstream logStream(logFile_, std::ios_base::app);
-        if (logStream.is_open()) {
-            logStream << logMessage.str() << std::endl;
-        } else {
-            std::cerr << "Error opening log file: " << logFile_ << std::endl;
-        }
-
-        // Log to console if enabled
-        if (logToConsole_) {
-            std::cout << logMessage.str() << std::endl;
-        }
+    void setFormat(const std::string& format) {
+        logFormat_ = format;
     }
 
-    /**
-     * @brief Set the maximum log size for rotation.
-     * @param maxSize Maximum log file size in bytes.
-     */
-    void setMaxLogSize(size_t maxSize) {
-        std::lock_guard<std::mutex> lock(mutex_);
-        maxLogSize_ = maxSize;
+    void log(LogLevel level, const std::string& message, const char* file = nullptr, const char* function = nullptr) {
+        if (level < minLogLevel_) return;
+
+        std::string formattedMessage = formatMessage(logFormat_, level, message, file, function);
+        logAsync(formattedMessage);
+    }
+
+    void stop() {
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            stopLogging_ = true;
+        }
+        cv_.notify_all();
+        if (loggingThread_.joinable()) {
+            loggingThread_.join();
+        }
     }
 
 private:
-    Logger() : verbose_(false) {} // Default to non-verbose logging
+    Logger()
+        : loggingThread_(&Logger::loggingFunction, this) {}
+
+    ~Logger() {
+        stop();
+    }
+
     Logger(const Logger&) = delete;
     Logger& operator=(const Logger&) = delete;
 
-    /**
-     * @brief Rotate logs if the log file exceeds the maximum size.
-     * @param maxSize Maximum allowed log file size in bytes.
-     */
-    void rotateLogs(size_t maxSize) {
-        std::ifstream file(logFile_, std::ios::ate | std::ios::binary);
-        if (file.is_open() && file.tellg() > static_cast<std::streampos>(maxSize)) {
-            file.close();
+    void loggingFunction() {
+        while (!stopLogging_ || !logQueue_.empty()) {
+            std::unique_lock<std::mutex> lock(mutex_);
+            cv_.wait(lock, [this] { return !logQueue_.empty() || stopLogging_; });
 
-            // Find the next available index for the backup file
-            int index = 1;
-            std::string backupFile;
-            do {
-                backupFile = logFile_ + "." + std::to_string(index);
-                ++index;
-            } while (std::filesystem::exists(backupFile));
+            while (!logQueue_.empty()) {
+                std::string message = std::move(logQueue_.front());
+                logQueue_.pop();
+                lock.unlock();
 
-            // Rename the current log file to the next available backup file
-            std::rename(logFile_.c_str(), backupFile.c_str());
+                std::ofstream logStream(logFile_, std::ios_base::app);
+                if (logStream.is_open()) {
+                    logStream << message << std::endl;
+
+                    if (logStream.tellp() >= static_cast<std::streampos>(maxLogSize_)) {
+                        rotateLogs();
+                    }
+                }
+
+                if (logToConsole_) {
+                    std::cout << message << std::endl;
+                }
+
+                lock.lock();
+            }
         }
     }
 
-    std::string logFile_; ///< Path to the log file
-    LogLevel minLogLevel_ = LogLevel::INFO; ///< Minimum log level
-    bool logToConsole_ = false; ///< Flag for console logging
-    size_t maxLogSize_ = 5 * 1024 * 1024; ///< Maximum log size (default: 5 MB)
-    std::mutex mutex_; ///< Mutex for thread safety
-    bool verbose_; ///< Flag to control verbosity
+    void logAsync(const std::string& message) {
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            logQueue_.push(message);
+        }
+        cv_.notify_one();
+    }
+
+    std::string formatMessage(const std::string& format, LogLevel level, const std::string& message, const char* file, const char* function) {
+        std::ostringstream result;
+        std::string timestamp = getTimestamp();
+        std::map<std::string, std::string> placeholders = {
+            {"<TIMESTAMP>", timestamp},
+            {"<LEVEL>", logLevelToString(level)},
+            {"<MESSAGE>", message},
+            {"<FILE>", file ? file : ""},
+            {"<FUNCTION>", function ? function : ""}
+        };
+
+        std::string formatted = format;
+        for (const auto& [key, value] : placeholders) {
+            size_t pos;
+            while ((pos = formatted.find(key)) != std::string::npos) {
+                formatted.replace(pos, key.length(), value);
+            }
+        }
+
+        return formatted;
+    }
+
+    std::string getTimestamp() {
+        auto now = std::chrono::system_clock::now();
+        auto time_t_now = std::chrono::system_clock::to_time_t(now);
+
+        // Use a mutex to protect std::localtime (not thread-safe on some platforms)
+        static std::mutex timeMutex;
+        std::tm tm_now;
+        {
+            std::lock_guard<std::mutex> lock(timeMutex);
+            tm_now = *std::localtime(&time_t_now);
+        }
+
+        std::ostringstream oss;
+        oss << std::put_time(&tm_now, "%Y-%m-%d %H:%M:%S");
+        return oss.str();
+    }
+
+    std::string logLevelToString(LogLevel level) {
+        switch (level) {
+            case LogLevel::TRACE: return "TRACE";
+            case LogLevel::DEBUG: return "DEBUG";
+            case LogLevel::INFO: return "INFO";
+            case LogLevel::WARNING: return "WARNING";
+            case LogLevel::ERROR: return "ERROR";
+            case LogLevel::CRITICAL: return "CRITICAL";
+        }
+        return "UNKNOWN";
+    }
+
+    void rotateLogs() {
+        for (int i = maxBackups_ - 1; i > 0; --i) {
+            std::rename((logFile_ + "." + std::to_string(i)).c_str(),
+                        (logFile_ + "." + std::to_string(i + 1)).c_str());
+        }
+        std::rename(logFile_.c_str(), (logFile_ + ".1").c_str());
+    }
+
+    std::queue<std::string> logQueue_;
+    std::thread loggingThread_;
+    std::mutex mutex_;
+    std::condition_variable cv_;
+    bool stopLogging_ = false;
+
+    std::string logFile_ = "log.txt";
+    LogLevel minLogLevel_ = LogLevel::INFO;
+    bool logToConsole_ = true;
+    size_t maxLogSize_ = 10 * 1024 * 1024;
+    int maxBackups_ = 5;
+    std::string logFormat_ = "[<TIMESTAMP>] [<LEVEL>] <MESSAGE>";
 };
+
 
 // Macro to simplify logging calls
 #define SIELOG(level, message)     Logger::getInstance().log(Logger::LogLevel::level, message, __FILE__, __func__)
