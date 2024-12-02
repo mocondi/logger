@@ -22,108 +22,110 @@
  * along with the Logger Project. If not, see <https://www.gnu.org/licenses/>.
  */
 
+
 #include <iostream>
 #include <thread>
 #include <vector>
 #include <csignal>
-#include <fcntl.h> // For _open(), _O_* flags
-#include <cstring> // For strlen()
-
-#ifdef _WIN32
-#include <io.h> // For _write() and _close() on Windows
-#include <sys/stat.h>
-#define O_WRONLY _O_WRONLY
-#define O_CREAT  _O_CREAT
-#define O_APPEND _O_APPEND
-#define PERMISSIONS _S_IREAD | _S_IWRITE
-#else
-#include <unistd.h>
-#define PERMISSIONS S_IRUSR | S_IWUSR
-#endif
-
+#include <cstdlib>
 #include "logger.hpp" // Include the updated Logger header
 
-int crashLogFd = -1;
-
-// Signal-safe logger class
-class SignalSafeLogger {
-public:
-    static void log(const char* message) {
-        write(fileno(stderr), message, static_cast<unsigned int>(strlen(message)));
-        write(fileno(stderr), "\n", 1);
-    }
-
-    static void logToFile(int fd, const char* message) {
-        if (fd != -1) {
-            write(fd, message, static_cast<unsigned int>(strlen(message)));
-            write(fd, "\n", 1);
-        }
-    }
-};
-
-void setupCrashLog() {
 #ifdef _WIN32
-    crashLogFd = _open("crash.log", _O_WRONLY | _O_CREAT | _O_APPEND, PERMISSIONS);
+#include <windows.h>
+#undef ERROR
 #else
-    crashLogFd = open("crash.log", O_WRONLY | O_CREAT | O_APPEND, PERMISSIONS);
+#include <unistd.h>
 #endif
-    if (crashLogFd == -1) {
-        SignalSafeLogger::log("Failed to open crash log file.");
+
+
+// Global flag to differentiate between normal and signal-based exits
+bool exitingFromSignal = false;
+
+/**
+ * @brief Unified cleanup function for normal and signal-based exits.
+ */
+void cleanup() {
+    auto& logger = Logger::getInstance();
+
+    if (exitingFromSignal) {
+        logger.log(Logger::LogLevel::CRITICAL, "Exiting due to a signal.");
     } else {
-        SignalSafeLogger::log("Crash log file opened successfully.");
+        logger.log(Logger::LogLevel::INFO, "Exiting normally.");
     }
+
+    // Perform any other resource cleanup tasks here
+    logger.stop();
+    std::cout << "Cleanup completed." << std::endl;
 }
 
-void cleanupCrashLog() {
-    if (crashLogFd != -1) {
-#ifdef _WIN32
-        _close(crashLogFd);
-#else
-        close(crashLogFd);
-#endif
-        SignalSafeLogger::log("Crash log file closed successfully.");
-    }
-}
-
+/**
+ * @brief Signal handler to handle termination signals.
+ * @param signal The signal number.
+ */
 void signalHandler(int signal) {
-    SignalSafeLogger::logToFile(crashLogFd, "Application crashed with signal:");
+    exitingFromSignal = true;
+
+    // Log the signal type
+    auto& logger = Logger::getInstance();
     switch (signal) {
+        case SIGINT:
+            logger.log(Logger::LogLevel::ERROR, "Received SIGINT (Interrupt)");
+            break;
+        case SIGTERM:
+            logger.log(Logger::LogLevel::ERROR, "Received SIGTERM (Termination)");
+            break;
+#ifdef SIGSEGV
         case SIGSEGV:
-            SignalSafeLogger::logToFile(crashLogFd, "SIGSEGV (Segmentation Fault)");
+            logger.log(Logger::LogLevel::CRITICAL, "Received SIGSEGV (Segmentation Fault)");
             break;
-        case SIGABRT:
-            SignalSafeLogger::logToFile(crashLogFd, "SIGABRT (Abort)");
-            break;
+#endif
         default:
-            SignalSafeLogger::logToFile(crashLogFd, "Unknown signal received");
+            logger.log(Logger::LogLevel::ERROR, "Received unknown signal");
             break;
     }
-    _exit(EXIT_FAILURE);
+
+    // Call cleanup
+    cleanup();
+
+    // Exit gracefully
+    exit(EXIT_FAILURE);
 }
 
+/**
+ * @brief Registers signal handlers for supported signals.
+ */
 void setupSignalHandlers() {
-    signal(SIGSEGV, signalHandler);
-    signal(SIGABRT, signalHandler);
+    std::signal(SIGINT, signalHandler);  // Interrupt (Ctrl+C)
+    std::signal(SIGTERM, signalHandler); // Termination request
+#ifdef SIGSEGV
+    std::signal(SIGSEGV, signalHandler); // Segmentation fault
+#endif
+#ifdef _WIN32
+    // Windows-specific signals (optional)
+    std::signal(SIGABRT, signalHandler); // Abort
+#endif
 }
 
 void threadFunction(int threadId) {
     auto& logger = Logger::getInstance();
 
-    SIELOG(INFO, "Thread " + std::to_string(threadId) + " started.");
-    SIELOG(DEBUG, "Thread " + std::to_string(threadId) + " is running.");
-    SIELOG(WARNING, "Thread " + std::to_string(threadId) + " encountered a minor issue.");
-    SIELOG(ERROR, "Thread " + std::to_string(threadId) + " encountered an error.");
-    SIELOG(INFO, "Thread " + std::to_string(threadId) + " finished.");
+    SIELOG(INFO, ("Thread " + std::to_string(threadId) + " started.").c_str());
+    SIELOG(DEBUG, ("Thread " + std::to_string(threadId) + " is running.").c_str());
+    SIELOG(WARNING, ("Thread " + std::to_string(threadId) + " encountered a minor issue.").c_str());
+    SIELOG(ERROR, ("Thread " + std::to_string(threadId) + " encountered an error.").c_str());
+    SIELOG(INFO, ("Thread " + std::to_string(threadId) + " finished.").c_str());
 }
 
 int main() {
     auto& logger = Logger::getInstance();
-    logger.setLogFile("logTest.log");
+    logger.setLogFile("app.log");
     logger.setLogLevel(Logger::LogLevel::DEBUG);
     logger.setLogToConsole(true);
 
-    setupCrashLog();
-    atexit(cleanupCrashLog);
+    // Register cleanup for normal exit
+    atexit(cleanup);
+
+    // Setup signal handlers for abnormal termination
     setupSignalHandlers();
 
     const int numThreads = 5;
@@ -131,20 +133,21 @@ int main() {
 
     std::cout << "Starting threads..." << std::endl;
 
+    // Create and start threads
     for (int i = 0; i < numThreads; ++i) {
         threads.emplace_back(threadFunction, i + 1);
     }
 
+    // Wait for all threads to finish
     for (auto& thread : threads) {
         if (thread.joinable()) {
             thread.join();
         }
     }
 
-    SIELOG(INFO, "All threads finished. Check the log file: logTest.log");
+    SIELOG(INFO, "All threads finished. Check the log file: app.log");
 
-    // Simulate a crash for testing
-    // Uncomment to test signal handling
+    // Simulate a crash for testing (uncomment to test signal handling)
     // int* ptr = nullptr;
     // *ptr = 42;
 

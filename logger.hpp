@@ -23,20 +23,23 @@
  *
  */
 
-#include <iostream>
-#include <fstream>
-#include <sstream>
-#include <string>
-#include <mutex>
-#include <queue>
-#include <thread>
-#include <condition_variable>
+#include <cstdarg>
 #include <chrono>
+#include <condition_variable>
 #include <ctime>
+#include <fstream>
+#include <iostream>
 #include <iomanip>
 #include <map>
+#include <mutex>
+#include <queue>
+#include <sstream>
+#include <string>
+#include <thread>
 
-#define SIELOG(level, message) Logger::getInstance().log(Logger::LogLevel::level, message, __FILE__, __func__)
+
+#define SIELOG(level, format, ...) \
+    Logger::getInstance().log(Logger::LogLevel::level, format, ##__VA_ARGS__, __FILE__, __func__)
 
 class Logger {
 public:
@@ -73,10 +76,16 @@ public:
         logFormat_ = format;
     }
 
-    void log(LogLevel level, const std::string& message, const char* file = nullptr, const char* function = nullptr) {
+    void log(LogLevel level, const char* format, ...) {
         if (level < minLogLevel_) return;
 
-        std::string formattedMessage = formatMessage(logFormat_, level, message, file, function);
+        char buffer[1024]; // Adjust size as needed
+        va_list args;
+        va_start(args, format);
+        std::vsnprintf(buffer, sizeof(buffer), format, args);
+        va_end(args);
+
+        std::string formattedMessage = formatMessage(logFormat_, level, buffer, nullptr, nullptr);
         logAsync(formattedMessage);
     }
 
@@ -150,7 +159,10 @@ private:
         };
 
         std::string formatted = format;
-        for (const auto& [key, value] : placeholders) {
+        for (const auto& pair : placeholders) {
+            const std::string& key = pair.first;
+            const std::string& value = pair.second;
+
             size_t pos;
             while ((pos = formatted.find(key)) != std::string::npos) {
                 formatted.replace(pos, key.length(), value);
@@ -210,10 +222,6 @@ private:
     int maxBackups_ = 5;
     std::string logFormat_ = "[<TIMESTAMP>] [<LEVEL>] <MESSAGE>";
 };
-
-
-// Macro to simplify logging calls
-#define SIELOG(level, message)     Logger::getInstance().log(Logger::LogLevel::level, message, __FILE__, __func__)
 
 
 /**
